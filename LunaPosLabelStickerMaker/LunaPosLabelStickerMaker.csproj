@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyName>LunaPosLabelStickerMaker</AssemblyName>
+    <RootNamespace>LunaPosLabelStickerMaker</RootNamespace>
+    <Version>1.0.0</Version>
+    <Company>LunaPOS</Company>
+    <Product>LunaPOS Label Sticker Maker</Product>
+    <Description>Professional Product Label and Packaging Sticker Maker for LunaPOS</Description>
+    <NoWarn>$(NoWarn);WFO1000;CS8600;CS8601;CS8602;CS8604;CS8618;CS0162</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TrialMode)' == 'true'">
+    <DefineConstants>$(DefineConstants);TRIAL_MODE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

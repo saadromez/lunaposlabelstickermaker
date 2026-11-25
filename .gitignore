@@ -1,0 +1,23 @@
+## Visual Studio / .NET Build Artifacts
+**/bin/
+**/obj/
+**/publish/
+**/publish_trial/
+
+## User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+
+## Test renders & temp outputs
+test_rendered_label.png
+test_rendered_preview.png
+*.log
+
+## Installer output
+installer_output/

@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "releaseDate": "2026-11-25",
+  "downloadUrl": "https://github.com/saadromez/lunaposlabelstickermaker/releases/download/v1.0.0/LunaPOSLabelStickerMakerSetup.exe",
+  "installerFileName": "LunaPOSLabelStickerMakerSetup.exe",
+  "changelog": "• Initial production release\n• Full Sinhala and English label design\n• Customizable phrase sizes, bolds, positions, and rotations\n• ESC/POS, TSPL, and Windows Driver thermal printer support\n• Built-in automatic updater with GitHub integration",
+  "mandatory": false
+}
