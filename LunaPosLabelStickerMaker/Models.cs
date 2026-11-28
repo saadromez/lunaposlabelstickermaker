@@ -2,6 +2,12 @@ using System.Text.Json.Serialization;
 
 namespace LunaPosLabelStickerMaker;
 
+public enum PrinterConnectionType
+{
+    WindowsDriver,
+    BluetoothSerial
+}
+
 public enum PrintEngine
 {
     WindowsDriver,
@@ -236,8 +242,17 @@ public class PrintJob
 
 public class AppSettings
 {
+    [JsonPropertyName("connection_type")]
+    public PrinterConnectionType ConnectionType { get; set; } = PrinterConnectionType.WindowsDriver;
+
     [JsonPropertyName("selected_printer")]
     public string SelectedPrinter { get; set; } = "";
+
+    [JsonPropertyName("bluetooth_port")]
+    public string BluetoothPort { get; set; } = "";
+
+    [JsonPropertyName("bluetooth_baud_rate")]
+    public int BluetoothBaudRate { get; set; } = 9600;
 
     [JsonPropertyName("print_engine")]
     public PrintEngine PrintEngine { get; set; } = PrintEngine.WindowsDriver;

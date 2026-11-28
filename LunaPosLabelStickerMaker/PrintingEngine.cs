@@ -647,6 +647,24 @@ public static class LabelRenderer
 
 public class PrintingEngine
 {
+    public static void Print(PrintJob job, AppSettings settings)
+    {
+        if (settings.ConnectionType == PrinterConnectionType.BluetoothSerial)
+        {
+            if (string.IsNullOrWhiteSpace(settings.BluetoothPort))
+                throw new ArgumentException("No Bluetooth / COM port selected in Settings.");
+
+            PrintViaSerial(job, settings.BluetoothPort, settings.BluetoothBaudRate, settings.PrintEngine);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(settings.SelectedPrinter))
+                throw new ArgumentException("No printer selected in Settings.");
+
+            Print(job, settings.SelectedPrinter, settings.PrintEngine);
+        }
+    }
+
     public static void Print(PrintJob job, string printerName, PrintEngine engine)
     {
         if (string.IsNullOrWhiteSpace(printerName))
@@ -682,6 +700,48 @@ public class PrintingEngine
         }
     }
 
+    public static void PrintViaSerial(PrintJob job, string portName, int baudRate, PrintEngine engine)
+    {
+        if (string.IsNullOrWhiteSpace(portName))
+            throw new ArgumentException("No Bluetooth / COM port specified.");
+
+        if (AppConfig.IsTrial)
+        {
+            if (TrialManager.IsTrialExpired)
+            {
+                throw new InvalidOperationException("Trial period has expired on this device. Printing is disabled.");
+            }
+
+            if (job.Copies > 3)
+            {
+                job.Copies = 3;
+            }
+        }
+
+        byte[] bytes;
+        if (engine == PrintEngine.EscPosRaster)
+        {
+            var single = BuildEscPosBytes(job);
+            if (job.Copies <= 1)
+            {
+                bytes = single;
+            }
+            else
+            {
+                var combined = new List<byte>(single.Length * job.Copies);
+                for (int i = 0; i < job.Copies; i++) combined.AddRange(single);
+                bytes = combined.ToArray();
+            }
+        }
+        else
+        {
+            // Default to TSPL raw for label printers
+            bytes = BuildTsplBytes(job);
+        }
+
+        BluetoothManager.SendRawBytes(portName, baudRate, bytes);
+    }
+
     private static void PrintViaWindowsDriver(PrintJob job, string printerName)
     {
         var tpl = job.Template ?? new LabelTemplate();
@@ -715,7 +775,7 @@ public class PrintingEngine
         pd.Print();
     }
 
-    private static void PrintViaTspl(PrintJob job, string printerName)
+    public static byte[] BuildTsplBytes(PrintJob job)
     {
         var tpl = job.Template ?? new LabelTemplate();
         int dpi = tpl.Dpi > 0 ? tpl.Dpi : 203;
@@ -763,11 +823,16 @@ public class PrintingEngine
         Buffer.BlockCopy(headerBytes, 0, totalBytes, 0, headerBytes.Length);
         Buffer.BlockCopy(rasterData, 0, totalBytes, headerBytes.Length, rasterData.Length);
         Buffer.BlockCopy(footerBytes, 0, totalBytes, headerBytes.Length + rasterData.Length, footerBytes.Length);
+        return totalBytes;
+    }
 
+    private static void PrintViaTspl(PrintJob job, string printerName)
+    {
+        byte[] totalBytes = BuildTsplBytes(job);
         RawPrinterHelper.SendBytes(printerName, totalBytes);
     }
 
-    private static void PrintViaEscPos(PrintJob job, string printerName)
+    public static byte[] BuildEscPosBytes(PrintJob job)
     {
         var tpl = job.Template ?? new LabelTemplate();
         int dpi = tpl.Dpi > 0 ? tpl.Dpi : 203;
@@ -804,8 +869,12 @@ public class PrintingEngine
             }
         }
         buf.Add(0x0C); // FF Form feed / cut
+        return buf.ToArray();
+    }
 
-        byte[] raster = buf.ToArray();
+    private static void PrintViaEscPos(PrintJob job, string printerName)
+    {
+        byte[] raster = BuildEscPosBytes(job);
         for (int i = 0; i < job.Copies; i++)
         {
             RawPrinterHelper.SendBytes(printerName, raster);

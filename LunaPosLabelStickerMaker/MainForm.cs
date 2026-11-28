@@ -86,8 +86,15 @@ public class MainForm : Form
     private PictureBox _templatePreviewBox = null!;
 
     // Settings View Controls
+    private RadioButton _rbConnWindows = null!;
+    private RadioButton _rbConnBluetooth = null!;
+    private Panel _pnlWindowsPrinter = null!;
+    private Panel _pnlBluetoothPrinter = null!;
     private ComboBox _cboSettingsPrinter = null!;
     private ComboBox _cboSettingsEngine = null!;
+    private ComboBox _cboBluetoothPort = null!;
+    private ComboBox _cboBluetoothBaud = null!;
+    private ComboBox _cboBluetoothProtocol = null!;
     private TextBox _txtSettingsCompany = null!;
     private TextBox _txtSettingsPhone = null!;
     private TextBox _txtSettingsCurrency = null!;
@@ -1427,26 +1434,44 @@ public class MainForm : Form
 
     private void ExecutePrint()
     {
-        string printer = _store.Settings.SelectedPrinter;
-        if (string.IsNullOrWhiteSpace(printer) && _cboSettingsPrinter?.SelectedItem != null)
+        if (_store.Settings.ConnectionType == PrinterConnectionType.BluetoothSerial)
         {
-            printer = _cboSettingsPrinter.SelectedItem.ToString() ?? "";
-            _store.Settings.SelectedPrinter = printer;
-            _store.SaveSettings();
-        }
+            if (string.IsNullOrWhiteSpace(_store.Settings.BluetoothPort) && _cboBluetoothPort?.SelectedItem is BluetoothPortInfo bt)
+            {
+                _store.Settings.BluetoothPort = bt.PortName;
+                _store.SaveSettings();
+            }
 
-        if (string.IsNullOrWhiteSpace(printer) && PrinterSettings.InstalledPrinters.Count > 0)
-        {
-            printer = new PrinterSettings().PrinterName;
-            _store.Settings.SelectedPrinter = printer;
-            _store.SaveSettings();
+            if (string.IsNullOrWhiteSpace(_store.Settings.BluetoothPort))
+            {
+                MessageBox.Show("Please select an active Bluetooth / COM port in Settings before printing.", "No Bluetooth Port Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SwitchTab("settings");
+                return;
+            }
         }
-
-        if (string.IsNullOrWhiteSpace(printer))
+        else
         {
-            MessageBox.Show("Please select a printer in Settings before printing.", "No Printer Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            SwitchTab("settings");
-            return;
+            string printer = _store.Settings.SelectedPrinter;
+            if (string.IsNullOrWhiteSpace(printer) && _cboSettingsPrinter?.SelectedItem != null)
+            {
+                printer = _cboSettingsPrinter.SelectedItem.ToString() ?? "";
+                _store.Settings.SelectedPrinter = printer;
+                _store.SaveSettings();
+            }
+
+            if (string.IsNullOrWhiteSpace(printer) && PrinterSettings.InstalledPrinters.Count > 0)
+            {
+                printer = new PrinterSettings().PrinterName;
+                _store.Settings.SelectedPrinter = printer;
+                _store.SaveSettings();
+            }
+
+            if (string.IsNullOrWhiteSpace(printer))
+            {
+                MessageBox.Show("Please select a printer in Settings before printing.", "No Printer Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                SwitchTab("settings");
+                return;
+            }
         }
 
         if (!TrialManager.CheckAccessAndShowDialog(this))
@@ -1466,17 +1491,21 @@ public class MainForm : Form
         _lblStatus.Text = "⏳ Printing labels...";
         _lblStatus.ForeColor = ModernColors.Warning;
 
+        string targetName = _store.Settings.ConnectionType == PrinterConnectionType.BluetoothSerial
+            ? $"Bluetooth ({_store.Settings.BluetoothPort})"
+            : _store.Settings.SelectedPrinter;
+
         Task.Run(() =>
         {
             try
             {
-                PrintingEngine.Print(_currentJob, printer, _store.Settings.PrintEngine);
-                _store.AddHistory(_currentJob, printer);
+                PrintingEngine.Print(_currentJob, _store.Settings);
+                _store.AddHistory(_currentJob, targetName);
 
                 Invoke(() =>
                 {
                     _btnPrint.Enabled = true;
-                    _lblStatus.Text = $"✓ Printed {_currentJob.Copies} label(s) successfully → {printer}";
+                    _lblStatus.Text = $"✓ Printed {_currentJob.Copies} label(s) successfully → {targetName}";
                     _lblStatus.ForeColor = ModernColors.Success;
                 });
             }
@@ -2160,15 +2189,124 @@ public class MainForm : Form
 
         int y = 54;
 
-        AddFormLabel(card, "Active Label / Receipt Printer", 16, ref y);
-        _cboSettingsPrinter = new ComboBox { Location = new Point(16, y), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 10f) };
-        card.Controls.Add(_cboSettingsPrinter); y += 36;
+        AddFormLabel(card, "Printer Connection Type", 16, ref y);
+        var pnlConnType = new FlowLayoutPanel
+        {
+            Location = new Point(16, y),
+            Width = 420,
+            Height = 32,
+            FlowDirection = FlowDirection.LeftToRight
+        };
+        _rbConnWindows = new RadioButton
+        {
+            Text = "🖨️ Windows Installed Driver",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            Checked = _store.Settings.ConnectionType == PrinterConnectionType.WindowsDriver,
+            Margin = new Padding(0, 0, 16, 0)
+        };
+        _rbConnBluetooth = new RadioButton
+        {
+            Text = "📶 Bluetooth / Serial (COM Port)",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            Checked = _store.Settings.ConnectionType == PrinterConnectionType.BluetoothSerial
+        };
+        pnlConnType.Controls.AddRange([_rbConnWindows, _rbConnBluetooth]);
+        card.Controls.Add(pnlConnType);
+        y += 34;
 
-        AddFormLabel(card, "Print Engine / Communication Mode", 16, ref y);
-        _cboSettingsEngine = new ComboBox { Location = new Point(16, y), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 10f) };
+        var pnlPrinterHolder = new Panel
+        {
+            Location = new Point(16, y),
+            Width = 420,
+            Height = 150,
+            BackColor = Color.Transparent
+        };
+
+        // Panel 1: Windows Printer
+        _pnlWindowsPrinter = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent
+        };
+        int wy = 0;
+        AddFormLabel(_pnlWindowsPrinter, "Active Windows Printer", 0, ref wy);
+        _cboSettingsPrinter = new ComboBox { Location = new Point(0, wy), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 10f) };
+        _pnlWindowsPrinter.Controls.Add(_cboSettingsPrinter); wy += 36;
+
+        AddFormLabel(_pnlWindowsPrinter, "Print Engine / Communication Mode", 0, ref wy);
+        _cboSettingsEngine = new ComboBox { Location = new Point(0, wy), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 10f) };
         _cboSettingsEngine.Items.AddRange(["Windows Driver (Recommended, High Precision Unicode GDI)", "TSPL Direct Raw (Thermal Label Printers)", "ESC/POS Raster (POS Receipt Printers)"]);
         _cboSettingsEngine.SelectedIndex = 0;
-        card.Controls.Add(_cboSettingsEngine); y += 36;
+        _pnlWindowsPrinter.Controls.Add(_cboSettingsEngine);
+
+        // Panel 2: Bluetooth Printer
+        _pnlBluetoothPrinter = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent
+        };
+        int by = 0;
+        AddFormLabel(_pnlBluetoothPrinter, "Active Bluetooth / COM Port", 0, ref by);
+        _cboBluetoothPort = new ComboBox { Location = new Point(0, by), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9.5f) };
+        _pnlBluetoothPrinter.Controls.Add(_cboBluetoothPort); by += 32;
+
+        var pnlBtButtons = new FlowLayoutPanel
+        {
+            Location = new Point(0, by),
+            Width = 400,
+            Height = 32,
+            FlowDirection = FlowDirection.LeftToRight
+        };
+        var btnRefreshBt = new Button
+        {
+            Text = "🔄 Refresh Ports",
+            Size = new Size(110, 28),
+            Font = new Font("Segoe UI", 8.5f),
+            FlatStyle = FlatStyle.System
+        };
+        btnRefreshBt.Click += (s, e) => LoadBluetoothPorts();
+
+        var btnPairBt = new Button
+        {
+            Text = "📶 Windows Bluetooth",
+            Size = new Size(140, 28),
+            Font = new Font("Segoe UI", 8.5f),
+            FlatStyle = FlatStyle.System
+        };
+        btnPairBt.Click += (s, e) => BluetoothManager.OpenBluetoothSettings();
+
+        var lblBaud = new Label { Text = "Baud:", AutoSize = true, Margin = new Padding(6, 6, 2, 0), Font = new Font("Segoe UI", 8.5f) };
+        _cboBluetoothBaud = new ComboBox { Width = 80, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 8.5f) };
+        _cboBluetoothBaud.Items.AddRange(["9600", "115200", "38400", "19200"]);
+        _cboBluetoothBaud.SelectedItem = _store.Settings.BluetoothBaudRate > 0 ? _store.Settings.BluetoothBaudRate.ToString() : "9600";
+        if (_cboBluetoothBaud.SelectedIndex < 0) _cboBluetoothBaud.SelectedIndex = 0;
+
+        pnlBtButtons.Controls.AddRange([btnRefreshBt, btnPairBt, lblBaud, _cboBluetoothBaud]);
+        _pnlBluetoothPrinter.Controls.Add(pnlBtButtons); by += 34;
+
+        AddFormLabel(_pnlBluetoothPrinter, "Protocol / Command Set", 0, ref by);
+        _cboBluetoothProtocol = new ComboBox { Location = new Point(0, by), Width = 400, DropDownStyle = ComboBoxStyle.DropDownList, Font = new Font("Segoe UI", 9.5f) };
+        _cboBluetoothProtocol.Items.AddRange(["TSPL Direct Raw (Thermal Label Printers - Xprinter, 4Barcode)", "ESC/POS Raster (Receipt & Mini Mobile Printers - 58mm/80mm)"]);
+        _cboBluetoothProtocol.SelectedIndex = _store.Settings.PrintEngine == PrintEngine.EscPosRaster ? 1 : 0;
+        _pnlBluetoothPrinter.Controls.Add(_cboBluetoothProtocol);
+
+        pnlPrinterHolder.Controls.Add(_pnlWindowsPrinter);
+        pnlPrinterHolder.Controls.Add(_pnlBluetoothPrinter);
+        card.Controls.Add(pnlPrinterHolder);
+
+        void UpdateConnTypeView()
+        {
+            bool isBt = _rbConnBluetooth.Checked;
+            _pnlWindowsPrinter.Visible = !isBt;
+            _pnlBluetoothPrinter.Visible = isBt;
+        }
+        _rbConnWindows.CheckedChanged += (s, e) => UpdateConnTypeView();
+        _rbConnBluetooth.CheckedChanged += (s, e) => UpdateConnTypeView();
+        UpdateConnTypeView();
+
+        y += 154;
 
         AddFormLabel(card, "Default Company / Brand Name", 16, ref y);
         _txtSettingsCompany = AddFormTextBox(card, 16, ref y, 400);
@@ -2381,6 +2519,58 @@ public class MainForm : Form
         _pnlUpdateBanner.BringToFront();
     }
 
+    private void UpdateHeaderPrinterBadge()
+    {
+        if (_lblHeaderPrinter == null) return;
+        if (_store.Settings.ConnectionType == PrinterConnectionType.BluetoothSerial)
+        {
+            string port = string.IsNullOrEmpty(_store.Settings.BluetoothPort) ? "Not Selected" : _store.Settings.BluetoothPort;
+            _lblHeaderPrinter.Text = $"📶 Bluetooth: {port}";
+        }
+        else
+        {
+            string p = string.IsNullOrEmpty(_store.Settings.SelectedPrinter) ? "Not Selected" : _store.Settings.SelectedPrinter;
+            _lblHeaderPrinter.Text = $"🖨️ Printer: {p}";
+        }
+    }
+
+    private void LoadBluetoothPorts()
+    {
+        if (_cboBluetoothPort == null) return;
+        _cboBluetoothPort.Items.Clear();
+
+        var ports = BluetoothManager.GetAvailablePorts();
+        foreach (var p in ports)
+        {
+            _cboBluetoothPort.Items.Add(p);
+        }
+
+        if (!string.IsNullOrEmpty(_store.Settings.BluetoothPort))
+        {
+            for (int i = 0; i < _cboBluetoothPort.Items.Count; i++)
+            {
+                if (_cboBluetoothPort.Items[i] is BluetoothPortInfo info &&
+                    string.Equals(info.PortName, _store.Settings.BluetoothPort, StringComparison.OrdinalIgnoreCase))
+                {
+                    _cboBluetoothPort.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (_cboBluetoothPort.SelectedIndex < 0 && _cboBluetoothPort.Items.Count > 0)
+        {
+            _cboBluetoothPort.SelectedIndex = 0;
+        }
+
+        if (_cboBluetoothPort.SelectedItem is BluetoothPortInfo sel)
+        {
+            _store.Settings.BluetoothPort = sel.PortName;
+        }
+
+        UpdateHeaderPrinterBadge();
+    }
+
     private void LoadPrinters()
     {
         _cboSettingsPrinter.Items.Clear();
@@ -2417,17 +2607,47 @@ public class MainForm : Form
         if (_cboSettingsPrinter.SelectedItem != null)
         {
             _store.Settings.SelectedPrinter = _cboSettingsPrinter.SelectedItem.ToString() ?? "";
-            _lblHeaderPrinter.Text = $"🖨️ Printer: {_store.Settings.SelectedPrinter}";
-            _store.SaveSettings();
         }
 
         _cboSettingsEngine.SelectedIndex = (int)_store.Settings.PrintEngine;
+
+        LoadBluetoothPorts();
+        UpdateHeaderPrinterBadge();
     }
 
     private void SaveSettingsFromForm()
     {
+        _store.Settings.ConnectionType = _rbConnBluetooth.Checked
+            ? PrinterConnectionType.BluetoothSerial
+            : PrinterConnectionType.WindowsDriver;
+
         _store.Settings.SelectedPrinter = _cboSettingsPrinter.SelectedItem?.ToString() ?? "";
-        _store.Settings.PrintEngine = (PrintEngine)_cboSettingsEngine.SelectedIndex;
+
+        if (_cboBluetoothPort.SelectedItem is BluetoothPortInfo btInfo)
+        {
+            _store.Settings.BluetoothPort = btInfo.PortName;
+        }
+        else if (_cboBluetoothPort.SelectedItem != null)
+        {
+            _store.Settings.BluetoothPort = _cboBluetoothPort.SelectedItem.ToString() ?? "";
+        }
+
+        if (_cboBluetoothBaud.SelectedItem != null && int.TryParse(_cboBluetoothBaud.SelectedItem.ToString(), out int baud))
+        {
+            _store.Settings.BluetoothBaudRate = baud;
+        }
+
+        if (_store.Settings.ConnectionType == PrinterConnectionType.BluetoothSerial)
+        {
+            _store.Settings.PrintEngine = _cboBluetoothProtocol.SelectedIndex == 1
+                ? PrintEngine.EscPosRaster
+                : PrintEngine.TsplRaw;
+        }
+        else
+        {
+            _store.Settings.PrintEngine = (PrintEngine)_cboSettingsEngine.SelectedIndex;
+        }
+
         _store.Settings.CompanyName = _txtSettingsCompany.Text.Trim();
         _store.Settings.CompanyPhone = _txtSettingsPhone.Text.Trim();
         _store.Settings.CurrencySymbol = _txtSettingsCurrency.Text.Trim();
@@ -2435,10 +2655,9 @@ public class MainForm : Form
         {
             _store.Settings.AutoCheckUpdates = _chkAutoUpdate.Checked;
         }
-        _store.Settings.CurrencySymbol = _txtSettingsCurrency.Text.Trim();
 
         _store.SaveSettings();
-        _lblHeaderPrinter.Text = $"🖨️ Printer: {_store.Settings.SelectedPrinter}";
+        UpdateHeaderPrinterBadge();
         MessageBox.Show("Settings saved successfully!", "Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
@@ -2464,8 +2683,11 @@ public class MainForm : Form
 
         try
         {
-            PrintingEngine.Print(testJob, _store.Settings.SelectedPrinter, _store.Settings.PrintEngine);
-            MessageBox.Show("Test print sent successfully to printer!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            PrintingEngine.Print(testJob, _store.Settings);
+            string dest = _store.Settings.ConnectionType == PrinterConnectionType.BluetoothSerial
+                ? $"Bluetooth port {_store.Settings.BluetoothPort}"
+                : $"printer {_store.Settings.SelectedPrinter}";
+            MessageBox.Show($"Test print sent successfully to {dest}!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
